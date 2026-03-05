@@ -29,6 +29,13 @@ def _command_string(commands: list[str]) -> str:
     return " ".join(commands)
 
 
+def _to_int(value: str) -> int | None:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
 async def run_mimikatz(
     session,
     beacon_selector: str,
@@ -51,6 +58,7 @@ async def run_mimikatz(
     beacon = await find_beacon(session, beacon_selector)
     beacon_row = beacon_to_row(beacon)
     beacon_id = beacon_row["id"]
+    callback_numeric_id = _to_int(beacon_row["name"]) or _to_int(beacon_id)
 
     task_response = None
     try:
@@ -58,6 +66,7 @@ async def run_mimikatz(
             session,
             beacon_id=beacon_id,
             callback_display_id=beacon_row["name"],
+            callback_numeric_id=callback_numeric_id,
             command_name="mimikatz",
             params=mimikatz_args,
         )
@@ -67,6 +76,7 @@ async def run_mimikatz(
             session,
             beacon_id=beacon_id,
             callback_display_id=beacon_row["name"],
+            callback_numeric_id=callback_numeric_id,
             command_name="execute_pe",
             params=execute_pe_args,
         )

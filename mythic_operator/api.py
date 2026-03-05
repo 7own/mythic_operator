@@ -133,11 +133,12 @@ async def create_task(
     command_name: str,
     params: str,
     callback_display_id: str | None = None,
+    callback_numeric_id: int | None = None,
 ):
     attempts = ("create_callback_task", "create_task", "issue_task", "task_create")
     value_map = {
         "mythic": session,
-        "callback_id": beacon_id,
+        "callback_id": callback_numeric_id if callback_numeric_id is not None else beacon_id,
         "callback_display_id": callback_display_id or beacon_id,
         "command": command_name,
         "command_name": command_name,
