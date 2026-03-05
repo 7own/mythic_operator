@@ -6,6 +6,7 @@ import click
 
 from mythic_operator.api import is_active, list_beacons, login
 from mythic_operator.commands.beacons import render_beacons
+from mythic_operator.commands.mimikatz import run_mimikatz
 from mythic_operator.config import build_config, create_config_file
 
 
@@ -53,6 +54,41 @@ def list_beacons_cmd(ctx: click.Context, as_json: bool, active_only: bool) -> No
 
     beacons = asyncio.run(_run())
     render_beacons(beacons, as_json=as_json)
+
+
+@cli.command("mimikatz")
+@click.option("--beacon", required=True, help="Beacon ID or name")
+@click.option("--commands", help="Comma-separated Mimikatz commands")
+@click.option("--ingest", is_flag=True, help="Ingest output via credops")
+@click.option("--tag", help="Credops ingest tag")
+@click.option("--save", help="Save raw output to a file")
+@click.option("--dry-run", is_flag=True, help="Show command and exit")
+@click.pass_context
+def mimikatz_cmd(
+    ctx: click.Context,
+    beacon: str,
+    commands: str | None,
+    ingest: bool,
+    tag: str | None,
+    save: str | None,
+    dry_run: bool,
+) -> None:
+    """Run Mimikatz on a beacon."""
+    config = ctx.obj["config"]
+
+    async def _run():
+        session = None if dry_run else await login(config)
+        await run_mimikatz(
+            session=session,
+            beacon_selector=beacon,
+            commands_value=commands,
+            ingest=ingest,
+            tag=tag,
+            save=save,
+            dry_run=dry_run,
+        )
+
+    asyncio.run(_run())
 
 
 def main() -> None:

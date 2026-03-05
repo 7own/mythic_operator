@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+import inspect
+import time
 from urllib.parse import urlparse
 
 from mythic import mythic
@@ -82,3 +85,97 @@ def beacon_to_row(beacon) -> dict[str, str]:
         "last_seen": str(_extract(beacon, "last_checkin", "last_seen", "timestamp")),
         "ip": str(_extract(beacon, "ip", "ip_address", "external_ip")),
     }
+
+
+def _ensure_beacon_list(payload):
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("callbacks", "results", "response"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+async def find_beacon(session, selector: str):
+    beacons = _ensure_beacon_list(await list_beacons(session))
+    for beacon in beacons:
+        row = beacon_to_row(beacon)
+        if selector in {row["id"], row["name"]}:
+            return beacon
+    selector_lower = selector.lower()
+    for beacon in beacons:
+        row = beacon_to_row(beacon)
+        if selector_lower in row["name"].lower():
+            return beacon
+    raise ValueError(f"Beacon '{selector}' was not found")
+
+
+def extract_task_id(task_response) -> str:
+    task_id = _extract(task_response, "id", "task_id", "display_id", "task_display_id", default="")
+    if not task_id:
+        raise RuntimeError("Task submission succeeded but no task id was returned")
+    return str(task_id)
+
+
+async def _invoke_with_supported_kwargs(func, kwargs: dict):
+    signature = inspect.signature(func)
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values()):
+        return await func(**kwargs)
+    supported = {k: v for k, v in kwargs.items() if k in signature.parameters}
+    return await func(**supported)
+
+
+async def create_task(session, beacon_id: str, command_name: str, params: str):
+    attempts = (
+        ("create_callback_task", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
+        ("create_task", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
+        ("issue_task", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
+        ("task_create", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
+    )
+    signature_errors = []
+    for function_name, kwargs in attempts:
+        func = getattr(mythic, function_name, None)
+        if func is None:
+            continue
+        try:
+            return await _invoke_with_supported_kwargs(func, kwargs)
+        except TypeError as exc:
+            signature_errors.append(f"{function_name}: {exc}")
+            continue
+    details = "; ".join(signature_errors) if signature_errors else "no compatible task API found"
+    raise RuntimeError(f"Unable to submit task '{command_name}' ({details})")
+
+
+def _extract_output_text(payload) -> str:
+    chunks = []
+    entries = payload if isinstance(payload, list) else _ensure_beacon_list(payload)
+    for entry in entries:
+        text = _extract(entry, "response", "output", "stdout", "user_output", "message", default="")
+        if text:
+            chunks.append(str(text))
+    return "\n".join(chunks).strip()
+
+
+async def poll_task_output(session, task_id: str, timeout: int = 180, poll_interval: int = 2) -> str:
+    response_calls = (
+        ("get_task_responses", {"mythic": session, "task_id": task_id}),
+        ("get_responses", {"mythic": session, "task_id": task_id}),
+        ("get_all_responses_for_task", {"mythic": session, "task_id": task_id}),
+    )
+    started = time.time()
+    while time.time() - started < timeout:
+        for function_name, kwargs in response_calls:
+            func = getattr(mythic, function_name, None)
+            if func is None:
+                continue
+            try:
+                payload = await _invoke_with_supported_kwargs(func, kwargs)
+            except TypeError:
+                continue
+            output = _extract_output_text(payload)
+            if output:
+                return output
+        await asyncio.sleep(poll_interval)
+    raise TimeoutError(f"Timed out waiting for task output (task_id={task_id})")
