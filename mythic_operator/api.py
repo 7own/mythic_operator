@@ -134,17 +134,23 @@ async def create_task(
     params: str,
     callback_display_id: str | None = None,
     callback_numeric_id: int | None = None,
+    wait_for_complete: bool = False,
 ):
     attempts = ("create_callback_task", "create_task", "issue_task", "task_create")
     value_map = {
         "mythic": session,
         "callback_id": callback_numeric_id if callback_numeric_id is not None else beacon_id,
-        "callback_display_id": callback_display_id or beacon_id,
+        "callback_display_id": (
+            callback_numeric_id
+            if callback_numeric_id is not None
+            else (callback_display_id or beacon_id)
+        ),
         "command": command_name,
         "command_name": command_name,
         "params": params,
         "parameters": params,
         "parameter": params,
+        "wait_for_complete": wait_for_complete,
     }
     signature_errors = []
     for function_name in attempts:
@@ -196,3 +202,25 @@ async def poll_task_output(session, task_id: str, timeout: int = 180, poll_inter
                 return output
         await asyncio.sleep(poll_interval)
     raise TimeoutError(f"Timed out waiting for task output (task_id={task_id})")
+
+
+async def issue_task_and_wait_output(
+    session,
+    callback_display_id: int,
+    command_name: str,
+    parameters: str,
+    timeout: int = 240,
+) -> str:
+    func = getattr(mythic, "issue_task_and_waitfor_task_output", None)
+    if func is None:
+        raise RuntimeError("issue_task_and_waitfor_task_output is unavailable in this mythic library")
+    result = await func(
+        mythic=session,
+        command_name=command_name,
+        parameters=parameters,
+        callback_display_id=callback_display_id,
+        timeout=timeout,
+    )
+    if isinstance(result, bytes):
+        return result.decode("utf-8", errors="replace").strip()
+    return str(result).strip()

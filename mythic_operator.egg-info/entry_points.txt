@@ -1,0 +1,2 @@
+[console_scripts]
+mythic-operator = mythic_operator.cli:main
