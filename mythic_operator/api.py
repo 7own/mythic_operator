@@ -127,20 +127,36 @@ async def _invoke_with_supported_kwargs(func, kwargs: dict):
     return await func(**supported)
 
 
-async def create_task(session, beacon_id: str, command_name: str, params: str):
-    attempts = (
-        ("create_callback_task", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
-        ("create_task", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
-        ("issue_task", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
-        ("task_create", {"mythic": session, "callback_id": beacon_id, "command": command_name, "params": params}),
-    )
+async def create_task(
+    session,
+    beacon_id: str,
+    command_name: str,
+    params: str,
+    callback_display_id: str | None = None,
+):
+    attempts = ("create_callback_task", "create_task", "issue_task", "task_create")
+    value_map = {
+        "mythic": session,
+        "callback_id": beacon_id,
+        "callback_display_id": callback_display_id or beacon_id,
+        "command": command_name,
+        "command_name": command_name,
+        "params": params,
+        "parameters": params,
+        "parameter": params,
+    }
     signature_errors = []
-    for function_name, kwargs in attempts:
+    for function_name in attempts:
         func = getattr(mythic, function_name, None)
         if func is None:
             continue
+        signature = inspect.signature(func)
+        kwargs = {}
+        for param_name in signature.parameters:
+            if param_name in value_map:
+                kwargs[param_name] = value_map[param_name]
         try:
-            return await _invoke_with_supported_kwargs(func, kwargs)
+            return await func(**kwargs)
         except TypeError as exc:
             signature_errors.append(f"{function_name}: {exc}")
             continue
