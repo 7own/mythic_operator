@@ -11,6 +11,12 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 DEFAULT_CONFIG_PATH = Path("~/.pwnbox/mythic.toml").expanduser()
+DEFAULT_CONFIG_TEMPLATE = """[mythic]
+url = "https://127.0.0.1:7443"
+username = "operator"
+password = "changeme"
+ssl_verify = false
+"""
 
 
 @dataclass(frozen=True)
@@ -45,3 +51,10 @@ def build_config(url: str | None, username: str | None, password: str | None) ->
         password=str(final_pass),
         ssl_verify=final_ssl,
     )
+
+
+def create_config_file(path: Path = DEFAULT_CONFIG_PATH) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+    return path
