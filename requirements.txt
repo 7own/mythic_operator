@@ -1,0 +1,5 @@
+mythic>=0.1.0
+click>=8.0
+rich>=13.0
+toml>=0.10
+requests>=2.31

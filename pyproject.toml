@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mythic-operator"
+version = "0.1.0"
+description = "CLI helper for Mythic C2 automation workflows"
+requires-python = ">=3.10"
+dependencies = [
+  "mythic>=0.1.0",
+  "click>=8.0",
+  "rich>=13.0",
+  "toml>=0.10",
+  "requests>=2.31",
+]
+
+[project.scripts]
+mythic-operator = "mythic_operator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
