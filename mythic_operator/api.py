@@ -204,6 +204,83 @@ async def poll_task_output(session, task_id: str, timeout: int = 180, poll_inter
     raise TimeoutError(f"Timed out waiting for task output (task_id={task_id})")
 
 
+async def list_mythic_files(session) -> list[dict]:
+    """Return all non-agent-download files registered in Mythic."""
+    from mythic import mythic_utilities
+    query = """
+    query ListMythicFiles {
+        filemeta(where: {is_download_from_agent: {_eq: false}, is_screenshot: {_eq: false}},
+                 order_by: {id: desc}) {
+            agent_file_id
+            filename_utf8
+            complete
+            md5
+            size
+        }
+    }
+    """
+    try:
+        result = await mythic_utilities.graphql_post(mythic=session, query=query)
+        return result.get("filemeta", [])
+    except Exception:
+        return []
+
+
+async def find_mythic_file(session, filename: str) -> str | None:
+    """Return the agent_file_id UUID of an already-registered file by name, or None."""
+    from mythic import mythic_utilities
+    query = f"""
+    query FindMythicFile {{
+        filemeta(where: {{filename_utf8: {{_eq: "{filename}"}}, complete: {{_eq: true}}, is_download_from_agent: {{_eq: false}}}}, limit: 1, order_by: {{id: desc}}) {{
+            agent_file_id
+        }}
+    }}
+    """
+    try:
+        result = await mythic_utilities.graphql_post(mythic=session, query=query)
+        entries = result.get("filemeta", [])
+        if entries:
+            return entries[0]["agent_file_id"]
+    except Exception:
+        pass
+    # Fallback: use library methods if available
+    for func_name in ("get_all_files", "get_files", "get_file_list"):
+        func = getattr(mythic, func_name, None)
+        if func is None:
+            continue
+        try:
+            result = await _invoke_with_supported_kwargs(func, {"mythic": session})
+        except Exception:
+            continue
+        entries = result if isinstance(result, list) else _ensure_beacon_list(result)
+        for entry in entries:
+            name = _extract(entry, "filename_utf8", "filename", "file_name", "name")
+            if str(name).lower() == filename.lower():
+                file_id = _extract(entry, "agent_file_id", "file_id", "id", "uuid")
+                return str(file_id) if file_id else None
+    return None
+
+
+async def upload_file_to_mythic(session, local_path, filename_override: str | None = None) -> str:
+    """Upload a local file to Mythic and return its agent_file_id UUID."""
+    from pathlib import Path as _Path
+    path = _Path(local_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found at {path}")
+    contents = path.read_bytes()
+    upload_name = filename_override or path.name
+    func = getattr(mythic, "register_file", None)
+    if func is None:
+        raise RuntimeError("mythic.register_file is not available in this library version")
+    result = await func(mythic=session, filename=upload_name, contents=contents)
+    if isinstance(result, (str, bytes)):
+        return str(result).strip()
+    file_id = _extract(result, "agent_file_id", "file_id", "id", "uuid")
+    if not file_id:
+        raise RuntimeError(f"register_file succeeded but returned no file_id: {result!r}")
+    return str(file_id)
+
+
 async def issue_task_and_wait_output(
     session,
     callback_display_id: int,
