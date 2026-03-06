@@ -7,6 +7,7 @@ import click
 from mythic_operator.api import is_active, list_beacons, login
 from mythic_operator.commands.beacons import render_beacons
 from mythic_operator.commands.mimikatz import run_mimikatz
+from mythic_operator.commands.socks import run_socks
 from mythic_operator.config import build_config, create_config_file
 
 
@@ -87,6 +88,22 @@ def mimikatz_cmd(
             save=save,
             dry_run=dry_run,
         )
+
+    asyncio.run(_run())
+
+
+@cli.command("socks")
+@click.option("--beacon", required=True, help="Beacon ID or name")
+@click.option("--port", default=7000, show_default=True, type=int, help="Local SOCKS5 port")
+@click.option("--stop", is_flag=True, help="Stop the existing SOCKS proxy on the beacon")
+@click.pass_context
+def socks_cmd(ctx: click.Context, beacon: str, port: int, stop: bool) -> None:
+    """Set up a Mythic built-in SOCKS5 proxy on a beacon."""
+    config = ctx.obj["config"]
+
+    async def _run():
+        session = await login(config)
+        await run_socks(session=session, beacon_selector=beacon, port=port, stop=stop)
 
     asyncio.run(_run())
 
